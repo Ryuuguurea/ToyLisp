@@ -45,7 +45,7 @@ Exp* atom(VM* vm, char* str){
     int idx = 0;
     int is_number = 1;
     while(str[idx]){
-        is_number = is_number && (isdigit(str[idx])||str[idx]=='.'||str[idx]=='-');
+        is_number = is_number && (isdigit(str[idx])||str[idx]=='.'||(str[idx]=='-' && idx !=0));
         idx++;
     }
     if(is_number){
@@ -126,9 +126,12 @@ Exp* eval(Exp* exp,Exp* env){
             *obj = eval(*val,env);
 
         }else if(strcmp("if",(*head)->symbol)==0){
-            Exp** condition = array_get(exp->list,1);
+            Exp** condition_exp = array_get(exp->list,1);
             Exp** seq = NULL;
-            if(eval(*condition,env)->number){
+            Exp* condition = eval(*condition_exp,env);
+            
+            if(condition->type == Number&&condition->number 
+            || condition->type == List&&condition->list->size){
                 seq = array_get(exp->list,2);
             }else{
                 seq = array_get(exp->list,3);
@@ -183,7 +186,7 @@ Exp* build_in_add(Exp* env,Exp* body){
     }
     return num;
 }
-Exp* build_in_min(Exp* env,Exp* body){
+Exp* build_in_sub(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
@@ -232,15 +235,8 @@ Exp* build_in_eq(Exp* env,Exp* body){
     return num;
 }
 Exp* build_in_list(Exp* env,Exp* body){
-    Exp* list = exp_new(env->env.vm);
-    list->type = List;
-    list->list = array_create(sizeof(Exp*));
-    for(int i =0;i<body->list->size;i++){
-        Exp** item = array_get(body->list,i);
-        array_push(list->list,item);
-    }
 
-    return list;
+    return body;
 }
 
 Exp* build_in_apply(Exp* env,Exp* body){
@@ -268,18 +264,18 @@ Exp* build_in_cons(Exp* env,Exp* body){
     return list;
 }
 Exp* build_in_car(Exp* env,Exp* body){
-    
     Exp** first = array_get(body->list,0);
-    return *first;
+    Exp** car = array_get((*first)->list,0);
+    return *car;
 }
 Exp* build_in_cdr(Exp* env,Exp* body){
-    
+    Exp** first = array_get(body->list,0);
+
     Exp* list = exp_new(env->env.vm);
     list->type = List;
     list->list = array_create(sizeof(Exp*));
-
-    for(int i =1;i<body->list->size;i++){
-        Exp** item = array_get(body->list,i);
+    for(int i =1;i<(*first)->list->size;i++){
+        Exp**item = array_get((*first)->list,i);
         array_push(list->list,item);
     }
     return list;
@@ -304,7 +300,7 @@ Exp* standard_env(VM* vm){
     env_set(env,"list",make_build_in(vm,build_in_list));
     env_set(env,"apply",make_build_in(vm,build_in_apply));
     env_set(env,"+",make_build_in(vm,build_in_add));
-    env_set(env,"-",make_build_in(vm,build_in_min));
+    env_set(env,"-",make_build_in(vm,build_in_sub));
     env_set(env,"*",make_build_in(vm,build_in_mult));
     env_set(env,"/",make_build_in(vm,build_in_div));
     env_set(env,">",make_build_in(vm,build_in_gt));
