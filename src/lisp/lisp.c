@@ -49,11 +49,11 @@ Exp* atom(VM* vm, char* str){
         idx++;
     }
     if(is_number){
-        res->type = Number;
+        res->type = ExpTypeNum;
         res->number = atof(str);
         free(str);
     }else{
-        res->type = Symbol;
+        res->type = ExpTypeSymbol;
         res->symbol = str;
     }
     return res;
@@ -65,14 +65,15 @@ Exp* read_from_tokens(VM* vm,Array* tokens){
         free(*token_ptr);
         free(token_ptr);
         list_value = exp_new(vm);
-        list_value->type = List;
+        list_value->type = ExpTypeList;
         list_value->list = array_create(sizeof(Exp*));
-
+        list_value->flags |= ExpFlagRoot;
         while (strcmp(*(char**)array_get(tokens,0),")")!=0)
         {
             Exp* left_value = read_from_tokens(vm,tokens);
             array_push(list_value->list,&left_value); 
         }
+        list_value->flags &= ~ExpFlagRoot;
         token_ptr = array_shift(tokens);
         free(*token_ptr);
         free(token_ptr);
@@ -94,11 +95,11 @@ void env_set(Exp*self,char* key,Exp* var){
 }
 
 
-Exp* eval(Exp* exp,Exp* env){
+Exp* eval(Exp* env,Exp* exp){
     Exp* ret = NULL;
-    if(exp->type == Symbol){
+    if(exp->type == ExpTypeSymbol){
         ret = *env_find(env,exp->symbol);
-    }else if(exp->type == Number){
+    }else if(exp->type == ExpTypeNum){
         ret = exp;
     }else{
         Exp** head = array_get(exp->list,0);
@@ -107,12 +108,12 @@ Exp* eval(Exp* exp,Exp* env){
 
             Exp** key = array_get(exp->list,1);
             Exp** val = array_get(exp->list,2);
-            env_set(env,(*key)->symbol,eval(*val,env));
+            env_set(env,(*key)->symbol,eval(env,*val));
 
         }else if(strcmp("lambda",(*head)->symbol)==0){
 
             ret = exp_new(env->env.vm);
-            ret->type= Procedure;
+            ret->type= ExpTypeProc;
             Exp** param = array_get(exp->list,1);
             Exp** body = array_get(exp->list,2);
             ret->proc.env = env;
@@ -123,40 +124,47 @@ Exp* eval(Exp* exp,Exp* env){
             Exp** key = array_get(exp->list,1);
             Exp** val = array_get(exp->list,2);
             Exp** obj = env_find(env,(*key)->symbol);
-            *obj = eval(*val,env);
+            *obj = eval(env,*val);
 
         }else if(strcmp("if",(*head)->symbol)==0){
             Exp** condition_exp = array_get(exp->list,1);
             Exp** seq = NULL;
-            Exp* condition = eval(*condition_exp,env);
+            Exp* condition = eval(env,*condition_exp);
             
-            if(condition->type == Number&&condition->number 
-            || condition->type == List&&condition->list->size){
+            if(condition->type == ExpTypeNum&&condition->number 
+            || condition->type == ExpTypeList&&condition->list->size){
                 seq = array_get(exp->list,2);
             }else{
                 seq = array_get(exp->list,3);
             }
-            ret = eval(*seq,env);
+            ret = eval(env,*seq);
 
         }else if(strcmp("quote",(*head)->symbol)==0){
             Exp** quote = array_get(exp->list,1);
             ret = *quote;
 
         }else{
-            Exp* proc = eval(*head,env);
+            CallStack stack;
+            Exp* proc = eval(env,*head);
+            stack.proc = proc;
             Exp* args = exp_new(env->env.vm);
-            args->type = List;
+            args->type = ExpTypeList;
             args->list = array_create(sizeof(Exp*));
+            args->flags |= ExpFlagRoot;
             for(int i =1;i<exp->list->size;i++){
                 Exp** item = array_get(exp->list,i);
-                Exp* argv = eval(*item,env);
+                Exp* argv = eval(env,*item);
                 array_push(args->list,&argv);
             }
-            if(proc->type == Function){
+            stack.args = args;
+            if(proc->type == ExpTypeFunc){
+                stack.env = env;
+                array_push(env->env.vm->call_stack,&stack);
+                args->flags &= ~ExpFlagRoot;
                 ret = proc->call(env,args);
             }else{
                 Exp* proc_env = exp_new(env->env.vm);
-                proc_env->type = Environment;
+                proc_env->type = ExpTypeEnv;
                 proc_env->env.vm = env->env.vm;
                 proc_env->env.outer = proc->proc.env;
                 proc_env->env.map = map_create(sizeof(Exp*));
@@ -165,8 +173,12 @@ Exp* eval(Exp* exp,Exp* env){
                     Exp** value = array_get(args->list,i);
                     map_insert(proc_env->env.map,(*key)->symbol,value);
                 }
-                ret = eval(proc->proc.body,proc_env);
+                stack.env = proc_env;
+                array_push(env->env.vm->call_stack,&stack);
+                args->flags &= ~ExpFlagRoot;
+                ret = eval(proc_env,proc->proc.body);
             }
+            array_pop(env->env.vm->call_stack);
         }
     }
     return ret;
@@ -179,7 +191,7 @@ Exp* build_in_begin(Exp* env,Exp* body){
 }
 Exp* build_in_add(Exp* env,Exp* body){
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     for(int i =0;i<body->list->size;i++){
         Exp** item = array_get(body->list,i);
         num->number += (*item)->number;
@@ -190,7 +202,7 @@ Exp* build_in_sub(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number - (*second) ->number;
     return num;
 }
@@ -198,7 +210,7 @@ Exp* build_in_mult(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number * (*second) ->number;
     return num;
 }
@@ -206,7 +218,7 @@ Exp* build_in_div(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number / (*second) ->number;
     return num;
 }
@@ -214,7 +226,7 @@ Exp* build_in_gt(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number > (*second) ->number;
     return num;
 }
@@ -222,7 +234,7 @@ Exp* build_in_lt(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number < (*second) ->number;
     return num;
 }
@@ -230,7 +242,7 @@ Exp* build_in_eq(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
-    num->type = Number;
+    num->type = ExpTypeNum;
     num->number = (*first)->number == (*second) ->number;
     return num;
 }
@@ -242,19 +254,19 @@ Exp* build_in_list(Exp* env,Exp* body){
 Exp* build_in_apply(Exp* env,Exp* body){
     
     Exp* list = exp_new(env->env.vm);
-    list->type = List;
+    list->type = ExpTypeList;
     list->list = array_create(sizeof(Exp*));
     for(int i =0;i<body->list->size;i++){
         Exp** item = array_get(body->list,i);
         array_push(list->list,item);
     }
 
-    return eval(list,env);
+    return eval(env,list);
 }
 Exp* build_in_cons(Exp* env,Exp* body){
     
     Exp* list = exp_new(env->env.vm);
-    list->type = List;
+    list->type = ExpTypeList;
     list->list = array_create(sizeof(Exp*));
     Exp** first = array_get(body->list,0);
     Exp** second = array_get(body->list,1);
@@ -272,7 +284,7 @@ Exp* build_in_cdr(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
 
     Exp* list = exp_new(env->env.vm);
-    list->type = List;
+    list->type = ExpTypeList;
     list->list = array_create(sizeof(Exp*));
     for(int i =1;i<(*first)->list->size;i++){
         Exp**item = array_get((*first)->list,i);
@@ -282,14 +294,15 @@ Exp* build_in_cdr(Exp* env,Exp* body){
 }
 Exp* make_build_in(VM* vm,Callable func){
     Exp* v = exp_new(vm);
-    v->type=Function;
+    v->type=ExpTypeFunc;
     v->call = func;
     return v;
 }
 
 Exp* standard_env(VM* vm){
     Exp* env = exp_new(vm);
-    env->type = Environment;
+    env->flags|=ExpFlagRoot;
+    env->type = ExpTypeEnv;
     env->env.vm = vm;
     env->env.outer = NULL;
     env->env.map = map_create(sizeof(Exp*));
@@ -312,7 +325,8 @@ Exp* standard_env(VM* vm){
 
 //memory
 Exp* exp_new(VM* vm){
-    Exp* exp = malloc(sizeof(Exp));
+    vm_gc(vm);
+    Exp* exp = &vm->exp_pool[vm->exp_pool_index++];//malloc(sizeof(Exp));
     memset(exp,0,sizeof(Exp));
     exp->next = vm->head;
     vm->head = exp;
@@ -320,18 +334,18 @@ Exp* exp_new(VM* vm){
     return exp;
 }
 void mark(Exp* exp){
-    if(exp->marked)return;
-    exp->marked = 1;
-    if(exp->type == List){
+    if(exp->flags&ExpFlagMarked)return;
+    exp->flags |= ExpFlagMarked;
+    if(exp->type == ExpTypeList){
         for(int i =0;i<exp->list->size;i++){
             Exp** item = array_get(exp->list,i);
             mark(*item);
         }
-    }else if(exp->type == Procedure){
+    }else if(exp->type == ExpTypeProc){
         mark(exp->proc.body);
         mark(exp->proc.env);
         mark(exp->proc.param);
-    }else if(exp->type == Environment){
+    }else if(exp->type == ExpTypeEnv){
         MapIter iter = map_iter(exp->env.map);
         char* key;
         while (key = map_next(exp->env.map,&iter))
@@ -342,26 +356,28 @@ void mark(Exp* exp){
     }
 }
 void exp_free(Exp* exp){
-    if(exp->type == Symbol){
+    if(exp->type == ExpTypeSymbol){
         free(exp->symbol);
-    }else if(exp->type == List){
+    }else if(exp->type == ExpTypeList){
         array_destroy(exp->list);
-    }else if(exp->type == Environment){
+    }else if(exp->type == ExpTypeEnv){
         map_destroy(exp->env.map);
     }
-    free(exp);
+    memset(exp,0,sizeof(Exp));
+    //free(exp);
 }
 void sweep(VM* vm){
-    Exp* head = vm->head;
-    while (head)
+    Exp** head = &(vm->head);
+    while (*head)
     {
-        if(head->marked){
-            head->marked = 0;
-            head = head->next;
+        if((*head)->flags&ExpFlagMarked){
+            (*head)->flags &= ~ExpFlagMarked;
+            head = &((*head)->next);
         }else{
-            vm->head = head->next;
-            exp_free(head);
-            head = vm->head;
+            Exp* unreached = *head;
+            *head = unreached->next;
+            head = &((*head)->next);
+            exp_free(unreached);
             vm->exp_num--;
         }
     }
@@ -373,25 +389,48 @@ Exp* vm_eval(VM* vm,char* str){
     Array* tokens = tokenize(str);
     Exp* exp = read_from_tokens(vm,tokens);
     array_destroy(tokens);
-    return eval(exp,vm->global_env);
+
+    exp->flags |= ExpFlagRoot;
+    Exp* res = eval(vm->global_env,exp);
+    exp->flags &= ~ExpFlagRoot;
+    return res;
 }
 void vm_init(VM* vm){
     memset(vm,0,sizeof(VM));
+    vm->call_stack = array_create(sizeof(CallStack));
     vm->global_env = standard_env(vm);
+
 }
 void vm_gc(VM* vm){
-    mark(vm->global_env);
+    int num = vm->exp_num;
+    Exp* head = vm->head;
+    //mark root
+    while (head)
+    {
+        if(head->flags&ExpFlagRoot){
+            mark(head);
+        }
+        head = head->next;
+    }
+    //mark callstack
+    for(int i =0;i<vm->call_stack->size;i++){
+        CallStack* item = array_get(vm->call_stack,i);
+        mark(item->args);
+        mark(item->env);
+        mark(item->proc);
+    }
     sweep(vm);
+    printf("%d exp free! %d exp remain.\n",num,vm->exp_num);
 }
 
 void to_string(Exp* obj,char* str){
     
     switch (obj->type)
     {
-    case Number:
+    case ExpTypeNum:
         sprintf(str," %f ",obj->number);
         break;
-    case List:
+    case ExpTypeList:
         int offset = 0;
         sprintf(str+offset,"(");
         offset += 1;
@@ -405,11 +444,14 @@ void to_string(Exp* obj,char* str){
         sprintf(str+offset,")");
         offset += 1;
         break;
-    case Function:
-        sprintf(str,"<Native>");
+    case ExpTypeFunc:
+        sprintf(str,"<Func>");
         break;
-    case Procedure:
-        sprintf(str,"<Procedure>");
+    case ExpTypeProc:
+        sprintf(str,"<Proc>");
+        break;
+    case ExpTypeEnv:
+        sprintf(str,"<Env>");
         break;
     default:
         break;

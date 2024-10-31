@@ -5,13 +5,19 @@ typedef struct Array Array;
 typedef struct Map Map;
 typedef struct VM VM;
 typedef enum{
-    List,
-    Symbol,
-    Number,
-    Function,
-    Procedure,
-    Environment
+    ExpTypeList,
+    ExpTypeSymbol,
+    ExpTypeNum,
+    ExpTypeFunc,
+    ExpTypeProc,
+    ExpTypeEnv
 }Type;
+
+typedef enum ExpFlags{
+    ExpFlagNone = 0,
+    ExpFlagMarked = 1<<0,
+    ExpFlagRoot = 1<<1,
+}ExpFlags;
 
 typedef Exp* (*Callable)(Exp*,Exp*);
 typedef struct Proc{
@@ -26,7 +32,6 @@ typedef struct Env{
 }Env;
 typedef struct Exp{
     Type type;
-    char marked;
     Exp* next;
     union{
         char* symbol;
@@ -36,12 +41,22 @@ typedef struct Exp{
         Proc proc;
         Env env;
     };
+    char flags;
 }Exp;
+
+typedef struct CallStack{
+    Exp* env;
+    Exp* proc;
+    Exp* args;
+}CallStack;
 
 typedef struct VM{
     Exp* global_env;
     Exp* head;
+    Array* call_stack;
     int exp_num;
+    Exp exp_pool[1024];
+    int exp_pool_index;
 }VM;
 
 void vm_init(VM*);

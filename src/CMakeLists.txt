@@ -1,2 +1,2 @@
-project(relay)
-add_executable(relay main.c collection/map.c collection/array.c lisp/lisp.c)
+project(lsip)
+add_executable(lsip main.c collection/map.c collection/array.c lisp/lisp.c)

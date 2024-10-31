@@ -58,3 +58,6 @@ void* array_shift(Array* self){
     self->data = new_data;
     return res;
 }
+void array_pop(Array* self){
+    self->size--;
+}
