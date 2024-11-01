@@ -9,7 +9,7 @@
 //forward
 Exp* exp_new(VM* vm);
 Exp* eval(Exp* env,Exp* exp);
-Exp* eval_proc(Exp* env,Exp* proc,Exp* args);
+Exp* apply_proc(Exp* env,Exp* proc,Exp* args);
 //syntax
 Array* tokenize(char* str){
     Array* res = array_create(sizeof(char*));
@@ -95,7 +95,7 @@ void env_set(Exp*self,char* key,Exp* var){
     map_insert(self->env.map,key,&var);
 }
 
-Exp* eval_proc(Exp* env,Exp* proc,Exp* args){
+Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
     Exp* ret = NULL;
     CallStack stack;
     stack.proc = proc;
@@ -131,6 +131,8 @@ Exp* eval(Exp* env,Exp* exp){
         ret = *env_find(env,exp->symbol);
     }else if(exp->type == ExpTypeNum){
         ret = exp;
+    }else if(exp->list->size==0){
+        ret = exp;
     }else{
         Exp** head = array_get(exp->list,0);
         
@@ -139,7 +141,7 @@ Exp* eval(Exp* env,Exp* exp){
             Exp** key = array_get(exp->list,1);
             Exp** val = array_get(exp->list,2);
             env_set(env,(*key)->symbol,eval(env,*val));
-
+            ret = *key;
         }else if(strcmp("lambda",(*head)->symbol)==0){
 
             ret = exp_new(env->env.vm);
@@ -172,7 +174,6 @@ Exp* eval(Exp* env,Exp* exp){
         }else if(strcmp("quote",(*head)->symbol)==0){
             Exp** quote = array_get(exp->list,1);
             ret = *quote;
-
         }else{
             Exp* proc = eval(env,*head);
             Exp* args = exp_new(env->env.vm);
@@ -185,7 +186,7 @@ Exp* eval(Exp* env,Exp* exp){
                 array_push(args->list,&argv);
             }
             args->flags &= ~ExpFlagRoot;
-            ret = eval_proc(env,proc,args);
+            ret = apply_proc(env,proc,args);
         }
     }
     return ret;
@@ -275,46 +276,15 @@ Exp* build_in_list(Exp* env,Exp* body){
 }
 
 Exp* build_in_apply(Exp* env,Exp* body){
-    
-    Exp* list = exp_new(env->env.vm);
-    list->type = ExpTypeList;
-    list->list = array_create(sizeof(Exp*));
-    for(int i =0;i<body->list->size;i++){
-        Exp** item = array_get(body->list,i);
-        array_push(list->list,item);
-    }
-
-    return eval(env,list);
-}
-Exp* build_in_map(Exp* env,Exp* body){
-    
-    Exp* list = exp_new(env->env.vm);
-    list->type = ExpTypeList;
-    list->list = array_create(sizeof(Exp*));
-    list->flags |= ExpFlagRoot;
+    Exp* ret;
     Exp** proc = array_get(body->list,0);
-    Exp** first = array_get(body->list,1);
-
-    for(int i =0;i<(*first)->list->size;i++){
-        Exp* list_to_eval = exp_new(env->env.vm);
-        list_to_eval->type = ExpTypeList;
-        list_to_eval->list = array_create(sizeof(Exp*));
-        list_to_eval->flags |= ExpFlagRoot;
-
-        for(int j = 1;j<body->list->size;j++){
-            Exp** list_to_pick = array_get(body->list,j);
-
-            Exp** item_to_eval = array_get((*list_to_pick)->list,i);
-            array_push(list_to_eval->list,item_to_eval);
-        }
-        list_to_eval->flags &= ~ExpFlagRoot;
-        Exp* eval_exp = eval_proc(env,*proc,list_to_eval);
-        array_push(list->list,&eval_exp);
+    for(int i =1;i<body->list->size;i++){
+        Exp** list_to_apply = array_get(body->list,i);
+        ret = apply_proc(env,*proc,*list_to_apply);
     }
-
-    list->flags &= ~ExpFlagRoot;
-    return list;
+    return ret;
 }
+
 Exp* build_in_cons(Exp* env,Exp* body){
     
     Exp* list = exp_new(env->env.vm);
@@ -364,7 +334,6 @@ Exp* standard_env(VM* vm){
     env_set(env,"cdr",make_build_in(vm,build_in_cdr));
     env_set(env,"list",make_build_in(vm,build_in_list));
     env_set(env,"apply",make_build_in(vm,build_in_apply));
-    env_set(env,"map",make_build_in(vm,build_in_map));
     env_set(env,"+",make_build_in(vm,build_in_add));
     env_set(env,"-",make_build_in(vm,build_in_sub));
     env_set(env,"*",make_build_in(vm,build_in_mult));
@@ -489,6 +458,9 @@ void to_string(Exp* obj,char* str){
     
     switch (obj->type)
     {
+    case ExpTypeSymbol:
+        sprintf(str," %s ",obj->symbol);
+        break;
     case ExpTypeNum:
         sprintf(str," %f ",obj->number);
         break;
