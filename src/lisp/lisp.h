@@ -55,8 +55,8 @@ typedef struct VM{
     Exp* head;
     Array* call_stack;
     int exp_num;
-    Exp exp_pool[1024];
-    int exp_pool_index;
+    int gc_thre;
+    int last_gc_num;
 }VM;
 
 void vm_init(VM*);

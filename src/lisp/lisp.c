@@ -325,8 +325,10 @@ Exp* standard_env(VM* vm){
 
 //memory
 Exp* exp_new(VM* vm){
-    vm_gc(vm);
-    Exp* exp = &vm->exp_pool[vm->exp_pool_index++];//malloc(sizeof(Exp));
+    if(vm->exp_num-vm->last_gc_num > vm->gc_thre){
+        vm_gc(vm);
+    }
+    Exp* exp = malloc(sizeof(Exp));
     memset(exp,0,sizeof(Exp));
     exp->next = vm->head;
     vm->head = exp;
@@ -364,7 +366,7 @@ void exp_free(Exp* exp){
         map_destroy(exp->env.map);
     }
     memset(exp,0,sizeof(Exp));
-    //free(exp);
+    free(exp);
 }
 void sweep(VM* vm){
     Exp** head = &(vm->head);
@@ -376,7 +378,6 @@ void sweep(VM* vm){
         }else{
             Exp* unreached = *head;
             *head = unreached->next;
-            head = &((*head)->next);
             exp_free(unreached);
             vm->exp_num--;
         }
@@ -398,11 +399,12 @@ Exp* vm_eval(VM* vm,char* str){
 void vm_init(VM* vm){
     memset(vm,0,sizeof(VM));
     vm->call_stack = array_create(sizeof(CallStack));
+    vm->gc_thre = 64;
     vm->global_env = standard_env(vm);
+
 
 }
 void vm_gc(VM* vm){
-    int num = vm->exp_num;
     Exp* head = vm->head;
     //mark root
     while (head)
@@ -419,8 +421,12 @@ void vm_gc(VM* vm){
         mark(item->env);
         mark(item->proc);
     }
+    int num = vm->exp_num;
     sweep(vm);
-    printf("%d exp free! %d exp remain.\n",num,vm->exp_num);
+    vm->last_gc_num = vm->exp_num;
+    vm->gc_thre = vm->exp_num / 2;
+    printf("gc triggered! %d exp free,%d exp remain,%d new for next gc.\n",
+        num - vm->exp_num,vm->exp_num,vm->gc_thre);
 }
 
 void to_string(Exp* obj,char* str){
