@@ -196,6 +196,20 @@ Exp* eval(Exp* env,Exp* exp){
         }else if(strcmp("quote",(*head)->symbol)==0){
             Exp** quote = array_get(exp->list,1);
             ret = *quote;
+        }else if(strcmp("define-macro",(*head)->symbol)==0){
+            Exp** key = array_get(exp->list,1);
+
+            Exp* macro = exp_new(env->env.vm);
+            macro->type= ExpTypeMacro;
+            Exp** param = array_get(exp->list,2);
+            Exp** body = array_get(exp->list,3);
+            macro->proc.env = env;
+            macro->proc.param = *param;
+            macro->proc.body = *body;
+
+            env_set(env,(*key)->symbol,macro);
+
+            ret = *key;
         }else{
             Exp* proc = eval(env,*head);
             Exp* args = exp_new(env->env.vm);
@@ -204,8 +218,12 @@ Exp* eval(Exp* env,Exp* exp){
             args->flags |= ExpFlagRoot;
             for(int i =1;i<exp->list->size;i++){
                 Exp** item = array_get(exp->list,i);
-                Exp* argv = eval(env,*item);
-                array_push(args->list,&argv);
+                if(proc->type == ExpTypeMacro){
+                    array_push(args->list,item);
+                }else{
+                    Exp* argv = eval(env,*item);
+                    array_push(args->list,&argv);
+                }
             }
             args->flags &= ~ExpFlagRoot;
             ret = apply_proc(env,proc,args);

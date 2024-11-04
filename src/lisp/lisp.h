@@ -10,6 +10,7 @@ typedef enum{
     ExpTypeNum,
     ExpTypeFunc,
     ExpTypeProc,
+    ExpTypeMacro,
     ExpTypeEnv
 }Type;
 
