@@ -9,6 +9,7 @@ typedef enum{
     ExpTypeList,
     ExpTypeSymbol,
     ExpTypeNum,
+    ExpTypeString,
     ExpTypeFunc,
     ExpTypeProc,
     ExpTypeMacro,
@@ -37,6 +38,7 @@ typedef struct Exp{
     Exp* next;
     union{
         char* symbol;
+        char* str;
         Array* list;
         double number;
         Callable call;

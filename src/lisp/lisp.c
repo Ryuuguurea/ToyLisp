@@ -17,7 +17,7 @@ Array* tokenize(char* str){
     int index = 0;
     char* item = NULL;
     while(str[index]){
-        if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''){
+        if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''||str[index]=='\"'){
             if(buf->size>0){
                 item = malloc((buf->size+1)*sizeof(char));
                 item[buf->size] = '\0';
@@ -25,7 +25,7 @@ Array* tokenize(char* str){
                 array_push(res,&item);
                 array_clear(buf);
             }
-            if(str[index]=='('||str[index]==')'||str[index]=='\''){
+            if(str[index]=='('||str[index]==')'||str[index]=='\''||str[index]=='\"'){
                 item = malloc(2*sizeof(char));
                 item[0] = str[index];
                 item[1] = '\0';
@@ -62,7 +62,21 @@ Exp* atom(VM* vm, char* str){
 Exp* read_from_tokens(VM* vm,Array* tokens){
     Exp* list_value = NULL;
     char** token_ptr = array_shift(tokens);
-    if(strcmp(*token_ptr,"(")==0){
+    if(strcmp(*token_ptr,"\"")==0){
+        free(*token_ptr);
+        free(token_ptr);
+
+        token_ptr = array_shift(tokens);
+        list_value = exp_new(vm);
+        list_value->type = ExpTypeString;
+        list_value->str = *token_ptr;
+        free(token_ptr);
+
+        token_ptr = array_shift(tokens);
+        free(*token_ptr);
+        free(token_ptr);
+
+    }else if(strcmp(*token_ptr,"(")==0){
         free(*token_ptr);
         free(token_ptr);
         list_value = exp_new(vm);
@@ -153,7 +167,7 @@ Exp* eval(Exp* env,Exp* exp){
     Exp* ret = NULL;
     if(exp->type == ExpTypeSymbol){
         ret = *env_find(env,exp->symbol);
-    }else if(exp->type == ExpTypeNum){
+    }else if(exp->type == ExpTypeNum||exp->type == ExpTypeString){
         ret = exp;
     }else if(exp->list->size==0){
         ret = exp;
@@ -437,6 +451,8 @@ void mark(Exp* exp){
 void exp_free(Exp* exp){
     if(exp->type == ExpTypeSymbol){
         free(exp->symbol);
+    }else if(exp->type == ExpTypeString){
+        free(exp->str);
     }else if(exp->type == ExpTypeList){
         array_destroy(exp->list);
     }else if(exp->type == ExpTypeEnv){
@@ -515,6 +531,9 @@ void to_string(Exp* obj,char* str){
         break;
     case ExpTypeNum:
         sprintf(str," %f ",obj->number);
+        break;
+    case ExpTypeString:
+        sprintf(str,"\"%s\"",obj->str);
         break;
     case ExpTypeList:
         int offset = 0;
