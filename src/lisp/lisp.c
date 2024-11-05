@@ -390,6 +390,26 @@ Exp* build_in_length(Exp* env,Exp* body){
     }
     return res;
 }
+Exp* build_in_sym_str(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* res= exp_new(env->env.vm);
+    res->type=ExpTypeString;
+    int size = strlen((*first)->symbol);
+    res->str = malloc(size+1);
+    memset(res->str,0,size+1);
+    memcpy(res->str,(*first)->symbol,size);
+    return res;
+}
+Exp* build_in_str_sym(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* res= exp_new(env->env.vm);
+    res->type=ExpTypeSymbol;
+    int size = strlen((*first)->str);
+    res->str = malloc(size+1);
+    memset(res->str,0,size+1);
+    memcpy(res->str,(*first)->str,size);
+    return res;
+}
 Exp* make_build_in(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeFunc;
@@ -422,6 +442,8 @@ Exp* standard_env(VM* vm){
     env_set(env,"equal?",make_build_in(vm,build_in_eq));
     env_set(env,"null?",make_build_in(vm,build_in_null));
     env_set(env,"length",make_build_in(vm,build_in_length));
+    env_set(env,"symbol->string",make_build_in(vm,build_in_sym_str));
+    env_set(env,"string->symbol",make_build_in(vm,build_in_str_sym));
     return env;
 }
 
