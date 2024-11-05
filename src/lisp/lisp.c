@@ -379,6 +379,17 @@ Exp* build_in_null(Exp* env,Exp* body){
     }
     return res;
 }
+Exp* build_in_length(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* res= exp_new(env->env.vm);
+    res->type=ExpTypeNum;
+    if((*first)->type==ExpTypeList){
+        res->number = (*first)->list->size;
+    }else if((*first)->type==ExpTypeString){
+        res->number = strlen((*first)->str);
+    }
+    return res;
+}
 Exp* make_build_in(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeFunc;
@@ -410,6 +421,7 @@ Exp* standard_env(VM* vm){
     env_set(env,"=",make_build_in(vm,build_in_eq));
     env_set(env,"equal?",make_build_in(vm,build_in_eq));
     env_set(env,"null?",make_build_in(vm,build_in_null));
+    env_set(env,"length",make_build_in(vm,build_in_length));
     return env;
 }
 
