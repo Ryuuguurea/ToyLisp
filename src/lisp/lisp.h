@@ -5,6 +5,7 @@ typedef struct Array Array;
 typedef struct Map Map;
 typedef struct VM VM;
 typedef enum{
+    ExpTypeNone,
     ExpTypeList,
     ExpTypeSymbol,
     ExpTypeNum,

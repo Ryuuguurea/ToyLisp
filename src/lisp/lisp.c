@@ -91,7 +91,6 @@ Exp* read_from_tokens(VM* vm,Array* tokens){
         Exp* quote = exp_new(vm);
         quote->type = ExpTypeSymbol;
         quote->symbol = malloc(sizeof(quote_expr));
-        memset(quote,0,sizeof(quote_expr));
         memcpy(quote->symbol,quote_expr,sizeof(quote_expr));
 
         array_push(list_value->list,&quote);
@@ -142,6 +141,9 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
         array_push(env->env.vm->call_stack,&stack);
         args->flags &= ~ExpFlagRoot;
         ret = eval(proc_env,proc->proc.body);
+        if(proc->type == ExpTypeMacro){
+            ret =eval(env,ret);
+        }
     }
     array_pop(env->env.vm->call_stack);
     return ret;
@@ -216,7 +218,7 @@ Exp* eval(Exp* env,Exp* exp){
             args->type = ExpTypeList;
             args->list = array_create(sizeof(Exp*));
             args->flags |= ExpFlagRoot;
-            for(int i =1;i<exp->list->size;i++){
+            for(int i = 1;i<exp->list->size;i++){
                 Exp** item = array_get(exp->list,i);
                 if(proc->type == ExpTypeMacro){
                     array_push(args->list,item);
@@ -318,7 +320,7 @@ Exp* build_in_list(Exp* env,Exp* body){
 Exp* build_in_apply(Exp* env,Exp* body){
     Exp* ret;
     Exp** proc = array_get(body->list,0);
-    for(int i =1;i<body->list->size;i++){
+    for(int i = 1;i<body->list->size;i++){
         Exp** list_to_apply = array_get(body->list,i);
         ret = apply_proc(env,*proc,*list_to_apply);
     }
@@ -354,6 +356,15 @@ Exp* build_in_cdr(Exp* env,Exp* body){
     }
     return list;
 }
+Exp* build_in_null(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* res= exp_new(env->env.vm);
+    res->type=ExpTypeNum;
+    if((*first)->type==ExpTypeList&&(*first)->list->size==0){
+        res->number = 1;
+    }
+    return res;
+}
 Exp* make_build_in(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeFunc;
@@ -384,6 +395,7 @@ Exp* standard_env(VM* vm){
     env_set(env,"<=",make_build_in(vm,build_in_le));
     env_set(env,"=",make_build_in(vm,build_in_eq));
     env_set(env,"equal?",make_build_in(vm,build_in_eq));
+    env_set(env,"null?",make_build_in(vm,build_in_null));
     return env;
 }
 
@@ -408,7 +420,7 @@ void mark(Exp* exp){
             Exp** item = array_get(exp->list,i);
             mark(*item);
         }
-    }else if(exp->type == ExpTypeProc){
+    }else if(exp->type == ExpTypeProc || exp->type == ExpTypeMacro){
         mark(exp->proc.body);
         mark(exp->proc.env);
         mark(exp->proc.param);
