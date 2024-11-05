@@ -67,3 +67,4 @@ void vm_init(VM*);
 void vm_gc(VM*);
 Exp* vm_eval(VM*,char*);
 void to_string(Exp*,char*);
+Exp* vm_load(VM*,char*);

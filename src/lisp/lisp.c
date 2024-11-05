@@ -10,6 +10,7 @@
 Exp* exp_new(VM* vm);
 Exp* eval(Exp* env,Exp* exp);
 Exp* apply_proc(Exp* env,Exp* proc,Exp* args);
+Exp* vm_load(VM*,char*);
 //syntax
 Array* tokenize(char* str){
     Array* res = array_create(sizeof(char*));
@@ -17,7 +18,7 @@ Array* tokenize(char* str){
     int index = 0;
     char* item = NULL;
     while(str[index]){
-        if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''||str[index]=='\"'){
+        if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''||str[index]=='\"'||str[index]=='\n'||str[index]=='\r'){
             if(buf->size>0){
                 item = malloc((buf->size+1)*sizeof(char));
                 item[buf->size] = '\0';
@@ -410,6 +411,23 @@ Exp* build_in_str_sym(Exp* env,Exp* body){
     memcpy(res->str,(*first)->str,size);
     return res;
 }
+Exp* build_in_str_append(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp** second = array_get(body->list,1);
+    Exp* res= exp_new(env->env.vm);
+    res->type=ExpTypeString;
+    int first_size = strlen((*first)->str);
+    int second_size = strlen((*second)->str);
+    res->str = malloc(first_size + second_size + 1);
+    memset(res->str,0,first_size + second_size + 1);
+    memcpy(res->str,(*first)->str,first_size);
+    memcpy(res->str+first_size,(*second)->str,second_size);
+    return res;
+}
+Exp* build_in_load(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    return vm_load(env->env.vm,(*first)->str);
+}
 Exp* make_build_in(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeFunc;
@@ -444,6 +462,9 @@ Exp* standard_env(VM* vm){
     env_set(env,"length",make_build_in(vm,build_in_length));
     env_set(env,"symbol->string",make_build_in(vm,build_in_sym_str));
     env_set(env,"string->symbol",make_build_in(vm,build_in_str_sym));
+    env_set(env,"string-append",make_build_in(vm,build_in_str_append));
+
+    env_set(env,"load",make_build_in(vm,build_in_load));
     return env;
 }
 
@@ -523,6 +544,27 @@ Exp* vm_eval(VM* vm,char* str){
     list_to_eval->flags &= ~ExpFlagRoot;
     return res;
 }
+Exp* vm_load(VM*vm,char*path){
+    FILE* fp = fopen(path,"r");
+    Array* dst = array_create(sizeof(char));
+
+    int offset = 0;
+    array_resize(dst,32);
+    while(!feof(fp)){
+        if(dst->size>=dst->data_size){
+            array_resize(dst,dst->data_size+32);
+        }
+        int rd_size = fread((char*)dst->data + offset,sizeof(char),32,fp);
+        offset += rd_size;
+        dst->size += rd_size;
+    }
+    fclose(fp);
+    char end = '\0';
+    array_push(dst,&end);
+    Exp* res= vm_eval(vm,dst->data);
+    array_destroy(dst);
+    return res;
+}
 void vm_init(VM* vm){
     memset(vm,0,sizeof(VM));
     vm->call_stack = array_create(sizeof(CallStack));
@@ -588,6 +630,9 @@ void to_string(Exp* obj,char* str){
         break;
     case ExpTypeProc:
         sprintf(str,"<Proc>");
+        break;
+    case ExpTypeMacro:
+        sprintf(str,"<Macro>");
         break;
     case ExpTypeEnv:
         sprintf(str,"<Env>");

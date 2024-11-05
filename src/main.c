@@ -1,9 +1,12 @@
 
 #include "stdio.h"
 #include "lisp/lisp.h"
-int main(int argc,char*argv){
+int main(int argc,char**argv){
     VM vm;
     vm_init(&vm);
+    if(argc>1){
+        vm_load(&vm,argv[1]);
+    }
     int num = 0;
     char code[512]={0};
     while (1)

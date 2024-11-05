@@ -13,3 +13,4 @@ void* array_get(Array* self,int index);
 void array_clear(Array* self);
 void array_append(Array* self,Array* other);
 void* array_shift(Array* self);
+void array_resize(Array* self,int new_size);

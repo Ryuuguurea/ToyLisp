@@ -14,12 +14,25 @@ void array_destroy(Array* self){
     free(self->data);
     free(self);
 }
+void array_resize(Array* self,int new_size){
+    void* new_data = malloc(new_size * self->item_size);
+    int copy_size = 0;
+    int array_size = self->size;
+    if(new_size > self->data_size){
+        copy_size = self->data_size;
+    }else{
+        copy_size = new_size;
+        array_size = new_size;
+    }
+    memcpy(new_data,self->data,copy_size*self->item_size);
+    free(self->data);
+    self->data_size = new_size;
+    self->data = new_data;
+    self->size = array_size;
+}
 void array_push(Array* self,void* item){
     if(self->size+1 > self->data_size){
-        void* new_data = malloc(self->data_size* 2 *self->item_size);
-        memcpy(new_data,self->data,self->data_size*self->item_size);
-        self->data_size = self->data_size* 2;
-        self->data = new_data;
+        array_resize(self,self->data_size* 2);
     }
     memcpy((char*)(self->data)+self->size*self->item_size,item,self->item_size);
     self->size++;
@@ -37,11 +50,7 @@ void array_append(Array* self,Array* other){
         while(new_size < self->size+other->size){
             new_size *= 2;
         }
-
-        void* new_data = malloc(new_size*self->item_size);
-        memcpy(new_data,self->data,self->data_size*self->item_size);
-        self->data_size=new_size;
-        self->data = new_data;
+        array_resize(self,new_size);
     }
     memcpy((char*)self->data+self->size*self->item_size,
         other->data,

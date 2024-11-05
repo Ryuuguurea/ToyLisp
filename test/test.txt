@@ -1,3 +1,8 @@
+(begin
 (define map (lambda (f lst)(if (null? lst) () (cons (f (car lst))(map f (cdr lst))))))
 (define-macro for (formal iterable body) (list 'map (list 'lambda (list formal) body)iterable))
 (for i '(1 2 3) (if (= 1 i) 0 i))
+(define-macro defstruct (_name)
+    (list 'define (string->symbol(string-append "make-" (symbol->string _name))) (list 'lambda ()()))
+)
+)
