@@ -412,16 +412,22 @@ Exp* build_in_str_sym(Exp* env,Exp* body){
     return res;
 }
 Exp* build_in_str_append(Exp* env,Exp* body){
-    Exp** first = array_get(body->list,0);
-    Exp** second = array_get(body->list,1);
     Exp* res= exp_new(env->env.vm);
+    int alloc_size = 1;
+    for(int i =0;i<body->list->size;i++){
+        Exp** item = array_get(body->list,i);
+        alloc_size+=strlen((*item)->str);
+    }
     res->type=ExpTypeString;
-    int first_size = strlen((*first)->str);
-    int second_size = strlen((*second)->str);
-    res->str = malloc(first_size + second_size + 1);
-    memset(res->str,0,first_size + second_size + 1);
-    memcpy(res->str,(*first)->str,first_size);
-    memcpy(res->str+first_size,(*second)->str,second_size);
+    res->str = malloc(alloc_size);
+    memset(res->str,0,alloc_size);
+    int offset = 0;
+    for(int i =0;i<body->list->size;i++){
+        Exp** item = array_get(body->list,i);
+        int copy_size = strlen((*item)->str);
+        memcpy(res->str+offset,(*item)->str,copy_size);
+        offset+=copy_size;
+    }
     return res;
 }
 Exp* build_in_load(Exp* env,Exp* body){
