@@ -46,11 +46,16 @@ Exp* atom(VM* vm, char* str){
     Exp* res = exp_new(vm);
     int idx = 0;
     int is_number = 1;
+    int num_count = 0;
     while(str[idx]){
-        is_number = is_number && (isdigit(str[idx])||str[idx]=='.'||(str[idx]=='-' && idx !=0));
+        if(idx == 0&&(str[idx]!='-')&&!isdigit(str[idx])){
+            is_number = 0;
+            break;
+        }
+        if(isdigit(str[idx]))num_count++;
         idx++;
     }
-    if(is_number){
+    if(is_number&&num_count>0){
         res->type = ExpTypeNum;
         res->number = atof(str);
         free(str);
@@ -143,18 +148,32 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
     }else{
         args->flags |= ExpFlagRoot;
         Exp* proc_env = exp_new(env->env.vm);
+        proc_env->flags |= ExpFlagRoot;
         proc_env->type = ExpTypeEnv;
         proc_env->env.vm = env->env.vm;
         proc_env->env.outer = proc->proc.env;
         proc_env->env.map = map_create(sizeof(Exp*));
         for(int i = 0;i<proc->proc.param->list->size;i++){
             Exp** key = array_get(proc->proc.param->list,i);
+            if(strcmp((*key)->symbol,".")==0){
+                key = array_get(proc->proc.param->list,i+1);
+                Exp* rest = exp_new(env->env.vm);
+                rest->type = ExpTypeList;
+                rest->list = array_create(sizeof(Exp*));
+                for(int j = i;j<args->list->size;j++){
+                    Exp** value = array_get(args->list,j);
+                    array_push(rest->list,value);
+                }
+                map_insert(proc_env->env.map,(*key)->symbol,&rest);
+                break;
+            }
             Exp** value = array_get(args->list,i);
             map_insert(proc_env->env.map,(*key)->symbol,value);
         }
         stack.env = proc_env;
         array_push(env->env.vm->call_stack,&stack);
         args->flags &= ~ExpFlagRoot;
+        proc_env->flags &= ~ExpFlagRoot;
         ret = eval(proc_env,proc->proc.body);
         if(proc->type == ExpTypeMacro){
             ret =eval(env,ret);
