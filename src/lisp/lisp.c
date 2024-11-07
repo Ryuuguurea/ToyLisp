@@ -210,6 +210,22 @@ Exp* eval(Exp* env,Exp* exp){
             ret->proc.param = *param;
             ret->proc.body = *body;
 
+        }else if(strcmp("let",(*head)->symbol)==0){
+            Exp** bind = array_get(exp->list,1);
+            Exp** body = array_get(exp->list,2);
+            Exp* let_env = exp_new(env->env.vm);
+            let_env->type = ExpTypeEnv;
+            let_env->env.outer=env;
+            let_env->env.map = map_create(sizeof(Exp*));
+            let_env->env.vm=env->env.vm;
+            for(int i =0;i<(*bind)->list->size;i++){
+                Exp** kv = array_get((*bind)->list,i);
+                Exp** key = array_get((*kv)->list,0);
+                Exp** value = array_get((*kv)->list,1);
+                env_set(let_env,(*key)->symbol,*value);
+            }
+            ret = eval(let_env,*body);
+
         }else if(strcmp("set!",(*head)->symbol)==0){
             Exp** key = array_get(exp->list,1);
             Exp** val = array_get(exp->list,2);
