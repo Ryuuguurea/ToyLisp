@@ -1,0 +1,68 @@
+;; 定义方向
+(define (make-direction dx dy) (list dx dy))
+
+(define UP (make-direction 0 -1))
+(define DOWN (make-direction 0 1))
+(define LEFT (make-direction -1 0))
+(define RIGHT (make-direction 1 0))
+
+;; 蛇的初始位置
+(define initial-snake '((0 0) (1 0) (2 0)))
+
+;; 移动蛇
+(define (move-snake snake direction)
+  (let ((head (car snake))
+        (tail (cdr snake)))
+    (cons (map + head direction) tail)))
+
+;; 检查是否撞墙或自撞
+(define (check-collision snake width height)
+  (let ((head (car snake))
+        (body (cdr snake)))
+    (or (< (car head) 0) (>= (car head) width)
+        (< (cadr head) 0) (>= (cadr head) height)
+        (member head body))))
+
+;; 生成食物
+(define (random-food width height)
+  (list (random width) (random height)))
+
+;; 检查蛇是否吃到食物
+(define (eat-food? snake food)
+  (equal? (car snake) food))
+
+;; 游戏主循环
+(define (snake-game width height)
+  (let ((snake initial-snake)
+        (direction RIGHT)
+        (food (random-food width height))
+        (game-over #f))
+    (while (not game-over)
+      ;; 移动蛇
+      (set! snake (move-snake snake direction))
+      
+      ;; 检查碰撞
+      (if (check-collision snake width height)
+          (set! game-over #t)
+          ;; 检查是否吃到食物
+          (if (eat-food? snake food)
+              (begin
+                (set! food (random-food width height))
+                (set! snake (append snake (list (list (car (last snake)) (cadr (last snake)))))))
+              ;; 没有吃到食物，保持原样
+              ))
+      
+      ;; 打印当前状态（实际图形界面应替代此部分）
+      (display snake)
+      (newline)
+      
+      ;; 等待用户输入以改变方向（在实际图形界面中应为事件监听）
+      (let ((input (read-char)))
+        (cond
+         ((char=? input #\w) (set! direction UP))
+         ((char=? input #\s) (set! direction DOWN))
+         ((char=? input #\a) (set! direction LEFT))
+         ((char=? input #\d) (set! direction RIGHT))))))))
+
+;; 运行游戏
+(snake-game 20 10)

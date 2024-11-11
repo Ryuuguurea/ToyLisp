@@ -5,7 +5,7 @@
 #include "string.h"
 #include "stdlib.h"
 #include "ctype.h"
-
+#include "time.h"
 //forward
 Exp* exp_new(VM* vm);
 Exp* eval(Exp* env,Exp* exp);
@@ -18,6 +18,13 @@ Array* tokenize(char* str){
     int index = 0;
     char* item = NULL;
     while(str[index]){
+        //comment
+        if(str[index]==';'){
+            while (str[index]!='\n'&&str[index]!='\r')
+            {
+                index++;
+            }
+        }
         if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''||str[index]=='\"'||str[index]=='\n'||str[index]=='\r'){
             if(buf->size>0){
                 item = malloc((buf->size+1)*sizeof(char));
@@ -58,6 +65,18 @@ Exp* atom(VM* vm, char* str){
     if(is_number&&num_count>0){
         res->type = ExpTypeNum;
         res->number = atof(str);
+        free(str);
+    }else if(str[0]=='#'){
+        if(str[1]=='\\'){
+            res->type = ExpTypeChar;
+            res->character = str[2];
+        }else if(str[1]=='t'){
+            res->type = ExpTypeNum;
+            res->number = 1;
+        }else{
+            res->type = ExpTypeNum;
+            res->number = 0;
+        }
         free(str);
     }else{
         res->type = ExpTypeSymbol;
@@ -135,13 +154,15 @@ Exp** env_find(Exp* self,char* var){
 void env_set(Exp*self,char* key,Exp* var){
     map_insert(self->env.map,key,&var);
 }
-
+Exp* apply_form(Exp* env,Exp* form,Exp* exp){
+    return form->call(env,exp);
+}
 Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
     Exp* ret = NULL;
     CallStack stack;
     stack.proc = proc;
     stack.args = args;
-    if(proc->type == ExpTypeFunc){
+    if(proc->type == ExpTypeFunc||proc->type==ExpTypeForm){
         stack.env = env;
         array_push(env->env.vm->call_stack,&stack);
         ret = proc->call(env,args);
@@ -187,90 +208,23 @@ Exp* eval(Exp* env,Exp* exp){
     Exp* ret = NULL;
     if(exp->type == ExpTypeSymbol){
         ret = *env_find(env,exp->symbol);
-    }else if(exp->type == ExpTypeNum||exp->type == ExpTypeString){
+    }else if(exp->type == ExpTypeNum||exp->type == ExpTypeString||exp->type == ExpTypeChar){
         ret = exp;
     }else if(exp->list->size==0){
         ret = exp;
     }else{
         Exp** head = array_get(exp->list,0);
-        
-        if(strcmp("define",(*head)->symbol)==0){
-
-            Exp** key = array_get(exp->list,1);
-            Exp** val = array_get(exp->list,2);
-            env_set(env,(*key)->symbol,eval(env,*val));
-            ret = *key;
-        }else if(strcmp("lambda",(*head)->symbol)==0){
-
-            ret = exp_new(env->env.vm);
-            ret->type= ExpTypeProc;
-            Exp** param = array_get(exp->list,1);
-            Exp** body = array_get(exp->list,2);
-            ret->proc.env = env;
-            ret->proc.param = *param;
-            ret->proc.body = *body;
-
-        }else if(strcmp("let",(*head)->symbol)==0){
-            Exp** bind = array_get(exp->list,1);
-            Exp** body = array_get(exp->list,2);
-            Exp* let_env = exp_new(env->env.vm);
-            let_env->type = ExpTypeEnv;
-            let_env->env.outer=env;
-            let_env->env.map = map_create(sizeof(Exp*));
-            let_env->env.vm=env->env.vm;
-            for(int i =0;i<(*bind)->list->size;i++){
-                Exp** kv = array_get((*bind)->list,i);
-                Exp** key = array_get((*kv)->list,0);
-                Exp** value = array_get((*kv)->list,1);
-                env_set(let_env,(*key)->symbol,*value);
-            }
-            ret = eval(let_env,*body);
-
-        }else if(strcmp("set!",(*head)->symbol)==0){
-            Exp** key = array_get(exp->list,1);
-            Exp** val = array_get(exp->list,2);
-            Exp** obj = env_find(env,(*key)->symbol);
-            *obj = eval(env,*val);
-
-        }else if(strcmp("if",(*head)->symbol)==0){
-            Exp** condition_exp = array_get(exp->list,1);
-            Exp** seq = NULL;
-            Exp* condition = eval(env,*condition_exp);
-            
-            if(condition->type == ExpTypeNum&&condition->number 
-            || condition->type == ExpTypeList&&condition->list->size){
-                seq = array_get(exp->list,2);
-            }else{
-                seq = array_get(exp->list,3);
-            }
-            ret = eval(env,*seq);
-
-        }else if(strcmp("quote",(*head)->symbol)==0){
-            Exp** quote = array_get(exp->list,1);
-            ret = *quote;
-        }else if(strcmp("define-macro",(*head)->symbol)==0){
-            Exp** key = array_get(exp->list,1);
-
-            Exp* macro = exp_new(env->env.vm);
-            macro->type= ExpTypeMacro;
-            Exp** param = array_get(exp->list,2);
-            Exp** body = array_get(exp->list,3);
-            macro->proc.env = env;
-            macro->proc.param = *param;
-            macro->proc.body = *body;
-
-            env_set(env,(*key)->symbol,macro);
-
-            ret = *key;
+        Exp* proc = eval(env,*head);
+        if(proc->type == ExpTypeForm){
+            return apply_form(env,proc,exp);
         }else{
-            Exp* proc = eval(env,*head);
             Exp* args = exp_new(env->env.vm);
             args->type = ExpTypeList;
             args->list = array_create(sizeof(Exp*));
             args->flags |= ExpFlagRoot;
             for(int i = 1;i<exp->list->size;i++){
                 Exp** item = array_get(exp->list,i);
-                if(proc->type == ExpTypeMacro){
+                if(proc->type == ExpTypeMacro||proc->type == ExpTypeForm){
                     array_push(args->list,item);
                 }else{
                     Exp* argv = eval(env,*item);
@@ -469,9 +423,135 @@ Exp* build_in_load(Exp* env,Exp* body){
     Exp** first = array_get(body->list,0);
     return vm_load(env->env.vm,(*first)->str);
 }
-Exp* make_build_in(VM* vm,Callable func){
+Exp* build_in_readchar(Exp* env,Exp* body){
+    Exp* res = exp_new(env->env.vm);
+    res->type=ExpTypeChar;
+    res->character = fgetc(stdin);
+    return res;
+}
+Exp* build_in_display(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    char buffer[1024]={0};
+    to_string(*first,buffer);
+    printf("%s",buffer);
+    return *first;
+}
+Exp* build_in_char_eq(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp** second = array_get(body->list,1);
+    Exp* res = exp_new(env->env.vm);
+    res->type=ExpTypeNum;
+    res->number = (*first)->character == (*second)->character;
+    return res;
+}
+Exp* build_in_random(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* res = exp_new(env->env.vm);
+    res->type=ExpTypeNum;
+    res->number = rand()%((int)(*first)->number);
+    return res;
+}
+Exp* make_fun(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeFunc;
+    v->call = func;
+    return v;
+}
+Exp* build_in_define(Exp* env,Exp* exp){
+    Exp** key = array_get(exp->list,1);
+    Exp** val = array_get(exp->list,2);
+    env_set(env,(*key)->symbol,eval(env,*val));
+    return *key;
+}
+Exp* build_in_lambda(Exp* env,Exp* exp){
+    Exp* ret = exp_new(env->env.vm);
+    ret->type= ExpTypeProc;
+    Exp** param = array_get(exp->list,1);
+    Exp** body = array_get(exp->list,2);
+    ret->proc.env = env;
+    ret->proc.param = *param;
+    ret->proc.body = *body;
+    return ret;
+}
+Exp* build_in_let(Exp* env,Exp* exp){
+    Exp** bind = array_get(exp->list,1);
+    Exp** body = array_get(exp->list,2);
+    Exp* let_env = exp_new(env->env.vm);
+    let_env->type = ExpTypeEnv;
+    let_env->env.outer=env;
+    let_env->env.map = map_create(sizeof(Exp*));
+    let_env->env.vm=env->env.vm;
+    for(int i =0;i<(*bind)->list->size;i++){
+        Exp** kv = array_get((*bind)->list,i);
+        Exp** key = array_get((*kv)->list,0);
+        Exp** value = array_get((*kv)->list,1);
+        env_set(let_env,(*key)->symbol,*value);
+    }
+    return eval(let_env,*body);
+}
+Exp* build_in_set(Exp* env,Exp* exp){
+    Exp** key = array_get(exp->list,1);
+    Exp** val = array_get(exp->list,2);
+    Exp** obj = env_find(env,(*key)->symbol);
+    *obj = eval(env,*val);
+    return *obj;
+}
+Exp* build_in_if(Exp* env,Exp* exp){
+    Exp** condition_exp = array_get(exp->list,1);
+    Exp** seq = NULL;
+    Exp* condition = eval(env,*condition_exp);
+    
+    if(condition->type == ExpTypeNum&&condition->number 
+    || condition->type == ExpTypeList&&condition->list->size){
+        seq = array_get(exp->list,2);
+    }else{
+        seq = array_get(exp->list,3);
+    }
+    return eval(env,*seq);
+}
+Exp* build_in_quote(Exp* env,Exp* exp){
+    Exp** quote = array_get(exp->list,1);
+    return *quote;
+}
+Exp* build_in_macro(Exp* env,Exp* exp){
+    Exp** key = array_get(exp->list,1);
+
+    Exp* macro = exp_new(env->env.vm);
+    macro->type= ExpTypeMacro;
+    Exp** param = array_get(exp->list,2);
+    Exp** body = array_get(exp->list,3);
+    macro->proc.env = env;
+    macro->proc.param = *param;
+    macro->proc.body = *body;
+
+    env_set(env,(*key)->symbol,macro);
+
+    return *key;  
+}
+
+Exp* build_in_cond(Exp* env,Exp* body){
+    Exp* else_exp = NULL;
+    for(int i =1;i<body->list->size;i++){
+        Exp** cond = array_get(body->list,i);
+        Exp** test = array_get((*cond)->list,0);
+        Exp** exe = array_get((*cond)->list,1);
+        if((*test)->type==ExpTypeSymbol&&strcmp((*test)->symbol,"else")==0){
+            else_exp = *exe;
+        }else{
+            Exp* test_res = eval(env,*test);
+            if(test_res->number){
+                return eval(env,*exe);
+            }
+        }
+    }
+    if(else_exp){
+        return eval(env,else_exp);
+    }
+    return NULL;
+}
+Exp* make_form(VM* vm,Callable func){
+    Exp* v = exp_new(vm);
+    v->type=ExpTypeForm;
     v->call = func;
     return v;
 }
@@ -483,29 +563,47 @@ Exp* standard_env(VM* vm){
     env->env.vm = vm;
     env->env.outer = NULL;
     env->env.map = map_create(sizeof(Exp*));
-    env_set(env,"begin",make_build_in(vm,build_in_begin));
-    env_set(env,"cons",make_build_in(vm,build_in_cons));
-    env_set(env,"car",make_build_in(vm,build_in_car));
-    env_set(env,"cdr",make_build_in(vm,build_in_cdr));
-    env_set(env,"list",make_build_in(vm,build_in_list));
-    env_set(env,"apply",make_build_in(vm,build_in_apply));
-    env_set(env,"+",make_build_in(vm,build_in_add));
-    env_set(env,"-",make_build_in(vm,build_in_sub));
-    env_set(env,"*",make_build_in(vm,build_in_mult));
-    env_set(env,"/",make_build_in(vm,build_in_div));
-    env_set(env,">",make_build_in(vm,build_in_gt));
-    env_set(env,"<",make_build_in(vm,build_in_lt));
-    env_set(env,">=",make_build_in(vm,build_in_ge));
-    env_set(env,"<=",make_build_in(vm,build_in_le));
-    env_set(env,"=",make_build_in(vm,build_in_eq));
-    env_set(env,"equal?",make_build_in(vm,build_in_eq));
-    env_set(env,"null?",make_build_in(vm,build_in_null));
-    env_set(env,"length",make_build_in(vm,build_in_length));
-    env_set(env,"symbol->string",make_build_in(vm,build_in_sym_str));
-    env_set(env,"string->symbol",make_build_in(vm,build_in_str_sym));
-    env_set(env,"string-append",make_build_in(vm,build_in_str_append));
+    //special form
+    env_set(env,"define",make_form(vm,build_in_define));
+    env_set(env,"lambda",make_form(vm,build_in_lambda));
+    env_set(env,"let",make_form(vm,build_in_let));
+    env_set(env,"set!",make_form(vm,build_in_set));
+    env_set(env,"if",make_form(vm,build_in_if));
+    env_set(env,"quote",make_form(vm,build_in_quote));
+    env_set(env,"define-macro",make_form(vm,build_in_macro));
+    env_set(env,"cond",make_form(vm,build_in_cond));
 
-    env_set(env,"load",make_build_in(vm,build_in_load));
+    //func
+    env_set(env,"begin",make_fun(vm,build_in_begin));
+    env_set(env,"cons",make_fun(vm,build_in_cons));
+    env_set(env,"car",make_fun(vm,build_in_car));
+    env_set(env,"cdr",make_fun(vm,build_in_cdr));
+    env_set(env,"list",make_fun(vm,build_in_list));
+    env_set(env,"apply",make_fun(vm,build_in_apply));
+    env_set(env,"+",make_fun(vm,build_in_add));
+    env_set(env,"-",make_fun(vm,build_in_sub));
+    env_set(env,"*",make_fun(vm,build_in_mult));
+    env_set(env,"/",make_fun(vm,build_in_div));
+    env_set(env,">",make_fun(vm,build_in_gt));
+    env_set(env,"<",make_fun(vm,build_in_lt));
+    env_set(env,">=",make_fun(vm,build_in_ge));
+    env_set(env,"<=",make_fun(vm,build_in_le));
+    env_set(env,"=",make_fun(vm,build_in_eq));
+    env_set(env,"equal?",make_fun(vm,build_in_eq));
+    env_set(env,"null?",make_fun(vm,build_in_null));
+    env_set(env,"length",make_fun(vm,build_in_length));
+    env_set(env,"symbol->string",make_fun(vm,build_in_sym_str));
+    env_set(env,"string->symbol",make_fun(vm,build_in_str_sym));
+    env_set(env,"string-append",make_fun(vm,build_in_str_append));
+
+    env_set(env,"read-char",make_fun(vm,build_in_readchar));
+    env_set(env,"display",make_fun(vm,build_in_display));
+    env_set(env,"char=?",make_fun(vm,build_in_char_eq));
+
+    time_t t;
+    srand((unsigned)time(&t));
+    env_set(env,"random",make_fun(vm,build_in_random));
+    env_set(env,"load",make_fun(vm,build_in_load));
     return env;
 }
 
@@ -672,11 +770,20 @@ void to_string(Exp* obj,char* str){
     case ExpTypeProc:
         sprintf(str,"<Proc>");
         break;
+    case ExpTypeForm:
+        sprintf(str,"<Form>");
+        break;
     case ExpTypeMacro:
         sprintf(str,"<Macro>");
         break;
     case ExpTypeEnv:
         sprintf(str,"<Env>");
+        break;
+    case ExpTypeChar:
+        sprintf(str,"'%c'",obj->character);
+        break;
+    case ExpTypePointer:
+        sprintf(str,"<Pointer>");
         break;
     default:
         break;

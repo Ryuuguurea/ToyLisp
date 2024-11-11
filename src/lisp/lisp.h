@@ -9,9 +9,12 @@ typedef enum{
     ExpTypeList,
     ExpTypeSymbol,
     ExpTypeNum,
+    ExpTypeChar,
+    ExpTypePointer,
     ExpTypeString,
     ExpTypeFunc,
     ExpTypeProc,
+    ExpTypeForm,
     ExpTypeMacro,
     ExpTypeEnv
 }Type;
@@ -44,6 +47,7 @@ typedef struct Exp{
         Callable call;
         Proc proc;
         Env env;
+        char character;
     };
     char flags;
 }Exp;
