@@ -25,7 +25,11 @@ Array* tokenize(char* str){
                 index++;
             }
         }
-        if(str[index]=='('||str[index]==')'||str[index]==' '||str[index]=='\''||str[index]=='\"'||str[index]=='\n'||str[index]=='\r'){
+        if(str[index]=='('||str[index]==')'||
+            str[index]=='['||str[index]==']'||
+            str[index]==' '||str[index]=='\''||
+            str[index]=='\"'||str[index]=='\n'||
+            str[index]=='\r'){
             if(buf->size>0){
                 item = malloc((buf->size+1)*sizeof(char));
                 item[buf->size] = '\0';
@@ -33,7 +37,9 @@ Array* tokenize(char* str){
                 array_push(res,&item);
                 array_clear(buf);
             }
-            if(str[index]=='('||str[index]==')'||str[index]=='\''||str[index]=='\"'){
+            if(str[index]=='('||str[index]==')'||
+                str[index]=='['||str[index]==']'||
+                str[index]=='\''||str[index]=='\"'){
                 item = malloc(2*sizeof(char));
                 item[0] = str[index];
                 item[1] = '\0';
@@ -101,14 +107,15 @@ Exp* read_from_tokens(VM* vm,Array* tokens){
         free(*token_ptr);
         free(token_ptr);
 
-    }else if(strcmp(*token_ptr,"(")==0){
+    }else if(strcmp(*token_ptr,"(")==0||strcmp(*token_ptr,"[")==0){
         free(*token_ptr);
         free(token_ptr);
         list_value = exp_new(vm);
         list_value->type = ExpTypeList;
         list_value->list = array_create(sizeof(Exp*));
         list_value->flags |= ExpFlagRoot;
-        while (strcmp(*(char**)array_get(tokens,0),")")!=0)
+        while (strcmp(*(char**)array_get(tokens,0),")")!=0&&
+            strcmp(*(char**)array_get(tokens,0),"]")!=0)
         {
             Exp* left_value = read_from_tokens(vm,tokens);
             array_push(list_value->list,&left_value); 
@@ -137,7 +144,8 @@ Exp* read_from_tokens(VM* vm,Array* tokens){
         array_push(list_value->list,&next);
         list_value->flags &= ~ExpFlagRoot;
 
-    }else if(strcmp(*token_ptr,")")!=0){
+    }else if(strcmp(*token_ptr,")")!=0&&
+        strcmp(*token_ptr,"]")!=0){
         list_value = atom(vm,*token_ptr);
         free(token_ptr);
     }
