@@ -269,11 +269,13 @@ Exp* build_in_sub(Exp* env,Exp* body){
     return num;
 }
 Exp* build_in_mult(Exp* env,Exp* body){
-    Exp** first = array_get(body->list,0);
-    Exp** second = array_get(body->list,1);
     Exp* num = exp_new(env->env.vm);
     num->type = ExpTypeNum;
-    num->number = (*first)->number * (*second) ->number;
+    num->number = 1;
+    for(int i =0;i<body->list->size;i++){
+        Exp** item = array_get(body->list,i);
+        num->number *= (*item)->number;
+    }
     return num;
 }
 Exp* build_in_div(Exp* env,Exp* body){
@@ -489,10 +491,31 @@ Exp* make_fun(VM* vm,Callable func){
     return v;
 }
 Exp* build_in_define(Exp* env,Exp* exp){
-    Exp** key = array_get(exp->list,1);
-    Exp** val = array_get(exp->list,2);
-    env_set(env,(*key)->symbol,eval(env,*val));
-    return *key;
+    Exp** first = array_get(exp->list,1);
+    if((*first)->type == ExpTypeSymbol){
+        Exp** val = array_get(exp->list,2);
+        env_set(env,(*first)->symbol,eval(env,*val));
+        return *first;
+    }else{
+        Exp** key = array_get((*first)->list,0);
+        Exp* ret = exp_new(env->env.vm);
+        ret->flags|=ExpFlagRoot;
+        ret->type= ExpTypeProc;
+        Exp* param = exp_new(env->env.vm);
+        ret->flags&=~ExpFlagRoot;
+        param->type = ExpTypeList;
+        param->list = array_create(sizeof(Exp*));
+        for(int i =1;i<(*first)->list->size;i++){
+            Exp** item = array_get((*first)->list,i);
+            array_push(param->list,item);
+        }
+        Exp** body = array_get(exp->list,2);
+        ret->proc.env = env;
+        ret->proc.param = param;
+        ret->proc.body = *body;
+        env_set(env,(*key)->symbol,ret);
+        return *key;
+    }
 }
 Exp* build_in_lambda(Exp* env,Exp* exp){
     Exp* ret = exp_new(env->env.vm);
