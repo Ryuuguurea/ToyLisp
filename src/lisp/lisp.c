@@ -316,6 +316,29 @@ Exp* build_in_eq(Exp* env,Exp* body){
     num->number = (*first)->number == (*second) ->number;
     return num;
 }
+Exp* build_in_not(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp* num = exp_new(env->env.vm);
+    num->type = ExpTypeNum;
+    num->number = !(*first)->number;
+    return num;
+}
+Exp* build_in_and(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp** second = array_get(body->list,1);
+    Exp* num = exp_new(env->env.vm);
+    num->type = ExpTypeNum;
+    num->number = (*first)->number && (*second) ->number;
+    return num;
+}
+Exp* build_in_or(Exp* env,Exp* body){
+    Exp** first = array_get(body->list,0);
+    Exp** second = array_get(body->list,1);
+    Exp* num = exp_new(env->env.vm);
+    num->type = ExpTypeNum;
+    num->number = (*first)->number || (*second) ->number;
+    return num;
+}
 Exp* build_in_list(Exp* env,Exp* body){
 
     return body;
@@ -590,6 +613,9 @@ Exp* standard_env(VM* vm){
     env_set(env,"<=",make_fun(vm,build_in_le));
     env_set(env,"=",make_fun(vm,build_in_eq));
     env_set(env,"equal?",make_fun(vm,build_in_eq));
+    env_set(env,"not",make_fun(vm,build_in_not));
+    env_set(env,"and",make_fun(vm,build_in_and));
+    env_set(env,"or",make_fun(vm,build_in_or));
     env_set(env,"null?",make_fun(vm,build_in_null));
     env_set(env,"length",make_fun(vm,build_in_length));
     env_set(env,"symbol->string",make_fun(vm,build_in_sym_str));

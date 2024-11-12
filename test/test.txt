@@ -5,4 +5,7 @@
 (define-macro defstruct (_name)
     (list 'define (string->symbol(string-append "make-" (symbol->string _name))) (list 'lambda ()()))
 )
+(define first
+    (lambda (ls)
+        (apply (lambda (x . y) x) ls)))
 )
