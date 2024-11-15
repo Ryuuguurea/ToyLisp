@@ -16,7 +16,8 @@ typedef enum{
     ExpTypeProc,
     ExpTypeForm,
     ExpTypeMacro,
-    ExpTypeEnv
+    ExpTypeEnv,
+    ExpTypeCallcc
 }Type;
 
 typedef enum ExpFlags{
@@ -48,15 +49,16 @@ typedef struct Exp{
         Proc proc;
         Env env;
         char character;
+        Array* stack;
     };
     char flags;
 }Exp;
 
-typedef struct CallStack{
+typedef struct StackFrame{
     Exp* env;
     Exp* proc;
     Exp* args;
-}CallStack;
+}StackFrame;
 
 typedef struct VM{
     Exp* global_env;

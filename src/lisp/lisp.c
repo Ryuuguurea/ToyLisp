@@ -11,6 +11,7 @@ Exp* exp_new(VM* vm);
 Exp* eval(Exp* env,Exp* exp);
 Exp* apply_proc(Exp* env,Exp* proc,Exp* args);
 Exp* vm_load(VM*,char*);
+Exp* vm_apply(VM*);
 //syntax
 Array* tokenize(char* str){
     Array* res = array_create(sizeof(char*));
@@ -165,15 +166,23 @@ void env_set(Exp*self,char* key,Exp* var){
 Exp* apply_form(Exp* env,Exp* form,Exp* exp){
     return form->call(env,exp);
 }
+Exp* vm_apply(VM* vm){
+    StackFrame* frame = array_get(vm->call_stack,vm->call_stack->size-1);
+    if(frame->proc->type==ExpTypeFunc||frame->proc->type == ExpTypeForm){
+        return frame->proc->call(frame->env,frame->args);
+    }else{
+        return eval(frame->env,frame->proc->proc.body);
+    }
+}
 Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
     Exp* ret = NULL;
-    CallStack stack;
+    StackFrame stack;
     stack.proc = proc;
     stack.args = args;
     if(proc->type == ExpTypeFunc||proc->type==ExpTypeForm){
         stack.env = env;
         array_push(env->env.vm->call_stack,&stack);
-        ret = proc->call(env,args);
+        ret = vm_apply(env->env.vm);
     }else{
         args->flags |= ExpFlagRoot;
         Exp* proc_env = exp_new(env->env.vm);
@@ -203,7 +212,7 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
         array_push(env->env.vm->call_stack,&stack);
         args->flags &= ~ExpFlagRoot;
         proc_env->flags &= ~ExpFlagRoot;
-        ret = eval(proc_env,proc->proc.body);
+        ret = vm_apply(env->env.vm);
         if(proc->type == ExpTypeMacro){
             ret =eval(env,ret);
         }
@@ -225,6 +234,12 @@ Exp* eval(Exp* env,Exp* exp){
         Exp* proc = eval(env,*head);
         if(proc->type == ExpTypeForm){
             return apply_form(env,proc,exp);
+        }else if(proc->type == ExpTypeCallcc){
+            Array* tmp = env->env.vm->call_stack;
+            env->env.vm->call_stack = proc->stack;
+            proc->stack = tmp;
+            Exp** second = array_get(exp->list,1);
+            ret = *second;
         }else{
             Exp* args = exp_new(env->env.vm);
             args->type = ExpTypeList;
@@ -603,6 +618,23 @@ Exp* build_in_cond(Exp* env,Exp* body){
     }
     return NULL;
 }
+Exp* build_in_callcc(Exp* env,Exp* body){
+    Exp**proc = array_get(body->list,0);
+    Exp* callcc = exp_new(env->env.vm);
+    callcc->flags|=ExpFlagRoot;
+    callcc->type=ExpTypeCallcc;
+    callcc->stack = array_create(sizeof(StackFrame));
+    for(int i =0;i<env->env.vm->call_stack->size;i++){
+        StackFrame* frame = array_get(env->env.vm->call_stack,i);
+        array_push(callcc->stack,frame);
+    }
+    Exp* args = exp_new(env->env.vm);
+    callcc->flags&=~ExpFlagRoot;
+    args->type=ExpTypeList;
+    args->list=array_create(sizeof(Exp*));
+    array_push(args->list,&callcc);
+    return apply_proc(env,*proc,args);
+}
 Exp* make_form(VM* vm,Callable func){
     Exp* v = exp_new(vm);
     v->type=ExpTypeForm;
@@ -626,8 +658,9 @@ Exp* standard_env(VM* vm){
     env_set(env,"quote",make_form(vm,build_in_quote));
     env_set(env,"define-macro",make_form(vm,build_in_macro));
     env_set(env,"cond",make_form(vm,build_in_cond));
-
+    
     //func
+    env_set(env,"call/cc",make_fun(vm,build_in_callcc));
     env_set(env,"begin",make_fun(vm,build_in_begin));
     env_set(env,"cons",make_fun(vm,build_in_cons));
     env_set(env,"car",make_fun(vm,build_in_car));
@@ -697,6 +730,14 @@ void mark(Exp* exp){
             Exp** item = map_get(exp->env.map,key);
             mark(*item);
         }
+    }else if(exp->type == ExpTypeCallcc){
+        for(int i =0;i<exp->stack->size;i++){
+            StackFrame* stack = array_get(exp->stack,i);
+            mark(stack->args);
+            mark(stack->env);
+            mark(stack->proc);
+        }
+        
     }
 }
 void exp_free(Exp* exp){
@@ -708,6 +749,8 @@ void exp_free(Exp* exp){
         array_destroy(exp->list);
     }else if(exp->type == ExpTypeEnv){
         map_destroy(exp->env.map);
+    }else if(exp->type==ExpTypeCallcc){
+        array_destroy(exp->stack);
     }
     memset(exp,0,sizeof(Exp));
     free(exp);
@@ -763,7 +806,7 @@ Exp* vm_load(VM*vm,char*path){
 }
 void vm_init(VM* vm){
     memset(vm,0,sizeof(VM));
-    vm->call_stack = array_create(sizeof(CallStack));
+    vm->call_stack = array_create(sizeof(StackFrame));
     vm->gc_thre = 64;
     vm->global_env = standard_env(vm);
 
@@ -781,7 +824,7 @@ void vm_gc(VM* vm){
     }
     //mark callstack
     for(int i =0;i<vm->call_stack->size;i++){
-        CallStack* item = array_get(vm->call_stack,i);
+        StackFrame* item = array_get(vm->call_stack,i);
         mark(item->args);
         mark(item->env);
         mark(item->proc);
@@ -835,6 +878,9 @@ void to_string(Exp* obj,char* str){
         break;
     case ExpTypeEnv:
         sprintf(str,"<Env>");
+        break;
+    case ExpTypeCallcc:
+        sprintf(str,"<Callcc>");
         break;
     case ExpTypeChar:
         sprintf(str,"'%c'",obj->character);
