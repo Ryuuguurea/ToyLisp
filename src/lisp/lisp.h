@@ -63,7 +63,7 @@ typedef struct StackFrame{
 typedef struct VM{
     Exp* global_env;
     Exp* head;
-    Array* call_stack;
+    Exp* call_cc;
     int exp_num;
     int gc_thre;
     int last_gc_num;

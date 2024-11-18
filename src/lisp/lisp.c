@@ -167,7 +167,7 @@ Exp* apply_form(Exp* env,Exp* form,Exp* exp){
     return form->call(env,exp);
 }
 Exp* vm_apply(VM* vm){
-    StackFrame* frame = array_get(vm->call_stack,vm->call_stack->size-1);
+    StackFrame* frame = array_get(vm->call_cc->stack,vm->call_cc->stack->size-1);
     if(frame->proc->type==ExpTypeFunc||frame->proc->type == ExpTypeForm){
         return frame->proc->call(frame->env,frame->args);
     }else{
@@ -181,7 +181,7 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
     stack.args = args;
     if(proc->type == ExpTypeFunc||proc->type==ExpTypeForm){
         stack.env = env;
-        array_push(env->env.vm->call_stack,&stack);
+        array_push(env->env.vm->call_cc->stack,&stack);
         ret = vm_apply(env->env.vm);
     }else{
         args->flags |= ExpFlagRoot;
@@ -209,7 +209,7 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
             map_insert(proc_env->env.map,(*key)->symbol,value);
         }
         stack.env = proc_env;
-        array_push(env->env.vm->call_stack,&stack);
+        array_push(env->env.vm->call_cc->stack,&stack);
         args->flags &= ~ExpFlagRoot;
         proc_env->flags &= ~ExpFlagRoot;
         ret = vm_apply(env->env.vm);
@@ -217,7 +217,7 @@ Exp* apply_proc(Exp* env,Exp* proc,Exp* args){
             ret =eval(env,ret);
         }
     }
-    array_pop(env->env.vm->call_stack);
+    array_pop(env->env.vm->call_cc->stack);
     return ret;
 }
 
@@ -235,9 +235,9 @@ Exp* eval(Exp* env,Exp* exp){
         if(proc->type == ExpTypeForm){
             return apply_form(env,proc,exp);
         }else if(proc->type == ExpTypeCallcc){
-            Array* tmp = env->env.vm->call_stack;
-            env->env.vm->call_stack = proc->stack;
-            proc->stack = tmp;
+            StackFrame* outer = array_get(env->env.vm->call_cc->stack,env->env.vm->call_cc->stack->size-1);
+            array_push(proc->stack,outer);
+            env->env.vm->call_cc = proc;
             Exp** second = array_get(exp->list,1);
             ret = *second;
         }else{
@@ -624,8 +624,8 @@ Exp* build_in_callcc(Exp* env,Exp* body){
     callcc->flags|=ExpFlagRoot;
     callcc->type=ExpTypeCallcc;
     callcc->stack = array_create(sizeof(StackFrame));
-    for(int i =0;i<env->env.vm->call_stack->size;i++){
-        StackFrame* frame = array_get(env->env.vm->call_stack,i);
+    for(int i =0;i<env->env.vm->call_cc->stack->size;i++){
+        StackFrame* frame = array_get(env->env.vm->call_cc->stack,i);
         array_push(callcc->stack,frame);
     }
     Exp* args = exp_new(env->env.vm);
@@ -806,10 +806,13 @@ Exp* vm_load(VM*vm,char*path){
 }
 void vm_init(VM* vm){
     memset(vm,0,sizeof(VM));
-    vm->call_stack = array_create(sizeof(StackFrame));
+    vm->call_cc = exp_new(vm);
+    vm->call_cc->type = ExpTypeCallcc;
+    vm->call_cc->stack = array_create(sizeof(StackFrame));
+    vm->call_cc->flags|= ExpFlagRoot;
     vm->gc_thre = 64;
     vm->global_env = standard_env(vm);
-
+    vm->call_cc->flags&= ~ExpFlagRoot;
 
 }
 void vm_gc(VM* vm){
@@ -823,12 +826,8 @@ void vm_gc(VM* vm){
         head = head->next;
     }
     //mark callstack
-    for(int i =0;i<vm->call_stack->size;i++){
-        StackFrame* item = array_get(vm->call_stack,i);
-        mark(item->args);
-        mark(item->env);
-        mark(item->proc);
-    }
+    mark(vm->call_cc);
+
     int num = vm->exp_num;
     sweep(vm);
     vm->last_gc_num = vm->exp_num;
