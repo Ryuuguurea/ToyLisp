@@ -5,7 +5,7 @@ int main(int argc,char**argv){
     VM vm;
     vm_init(&vm);
     vm_eval(&vm,"(define f (lambda (return) (return 2) 3))");
-    //vm_eval(&vm,"(f +)");
+    vm_eval(&vm,"(f +)");
     vm_eval(&vm,"(call/cc f)");
     vm_eval(&vm,"(call/cc f)");
     vm_eval(&vm,"(call/cc f)");
